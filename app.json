@@ -9,7 +9,15 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "me.ravingupta.startracker",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Location access is required for accurate astronomical calculations and star positioning.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Background location access allows continuous star tracking and astronomical calculations.",
+        "NSCameraUsageDescription": "Camera access enables star field photography and alignment assistance.",
+        "NSPhotoLibraryUsageDescription": "Photo library access allows saving star photos and importing reference images."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +27,19 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "me.ravingupta.startracker",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "CAMERA",
+        "VIBRATE"
+      ]
     },
     "web": {
       "output": "static",
@@ -43,6 +63,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "950009ed-0e53-4c17-9d1c-8a15e03d3b2c"
+      }
     }
   }
 }
