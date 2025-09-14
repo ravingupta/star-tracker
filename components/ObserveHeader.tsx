@@ -4,8 +4,9 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import type { LocationObject } from 'expo-location';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
 
 export default function ObserveHeader() {
   const successColor = useThemeColor({}, "success");
@@ -124,28 +125,15 @@ export default function ObserveHeader() {
     return "gps-off";
   };
 
-  // Show detailed location quality information
+  // Navigate to detailed GPS quality information
   const showLocationDetails = (loc: LocationObject, age: number) => {
-    const qualityScore = getLocationQualityScore(loc, age);
-    const horizontalAcc = loc.coords.accuracy;
-    const verticalAcc = loc.coords.altitudeAccuracy;
-    const speed = loc.coords.speed;
-
-    let qualityText = "Excellent";
-    if (qualityScore >= 80) qualityText = "Excellent";
-    else if (qualityScore >= 60) qualityText = "Good";
-    else if (qualityScore >= 40) qualityText = "Fair";
-    else qualityText = "Poor";
-
-    Alert.alert(
-      "GPS Quality Details",
-      `Overall Quality: ${qualityText} (${qualityScore.toFixed(0)}%)\n\n` +
-      `Horizontal Accuracy: ${horizontalAcc ? `±${horizontalAcc.toFixed(1)}m` : 'Unknown'}\n` +
-      `Vertical Accuracy: ${verticalAcc ? `±${verticalAcc.toFixed(1)}m` : 'Unknown'}\n` +
-      `Data Age: ${age.toFixed(1)} seconds\n` +
-      `Speed: ${speed ? `${(speed * 3.6).toFixed(1)} km/h` : 'Stationary'}\n`,
-      [{ text: "OK" }]
-    );
+    router.push({
+      pathname: '/gps-details',
+      params: {
+        location: JSON.stringify(loc),
+        age: age.toString()
+      }
+    });
   };  
   return (
     <ThemedView style={{

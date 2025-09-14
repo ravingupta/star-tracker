@@ -6,6 +6,10 @@ export type OrientationSettings = {
   useTrueNorth: boolean;
 };
 
+// Local helpers
+const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
+const rad2deg = (r: number): number => (r * 180) / Math.PI;
+
 // Compute pitch & roll from accelerometer vector
 export function getPitchRollFromAccel(accel: Vec3, settings?: OrientationSettings) {
   const ax = accel.x;
@@ -21,6 +25,44 @@ export function getPitchRollFromAccel(accel: Vec3, settings?: OrientationSetting
   return { pitch, roll };
 }
 
+// Compute altitude (deg above horizon) from accelerometer by comparing
+// device "forward" vector to the gravity (up) vector. This is often more
+// intuitive for aiming with the phone's top edge than using pitch alone.
+// Defaults assume portrait orientation with the phone's top edge pointing forward.
+export function altitudeFromAccel(
+  accel: Vec3,
+  opts?: { forwardAxis?: 'x' | 'y' | 'z'; forwardSign?: 1 | -1; flip?: boolean }
+): number {
+  const ax = accel.x;
+  const ay = accel.y;
+  const az = accel.z;
+
+  // Normalize gravity vector (points DOWN toward Earth)
+  const gLen = Math.hypot(ax, ay, az) || 1;
+  const gx = ax / gLen;
+  const gy = ay / gLen;
+  const gz = az / gLen;
+
+  // Up vector is opposite gravity
+  const upX = -gx;
+  const upY = -gy;
+  const upZ = -gz;
+
+  const forwardAxis = opts?.forwardAxis ?? 'y';
+  const forwardSign = opts?.forwardSign ?? -1; // -Y is toward the phone's top edge in portrait on many devices
+
+  let fx = 0, fy = 0, fz = 0;
+  if (forwardAxis === 'x') fx = forwardSign;
+  else if (forwardAxis === 'y') fy = forwardSign;
+  else fz = forwardSign; // 'z'
+
+  // Altitude = asin( dot(forward, up) ), clamped to [-90, +90]
+  const dot = fx * upX + fy * upY + fz * upZ;
+  let altDeg = rad2deg(Math.asin(clamp(dot, -1, 1)));
+  if (opts?.flip) altDeg = -altDeg;
+  return altDeg;
+}
+
 // Tilt-compensated heading from magnetometer & pitch/roll
 export function tiltCompensatedHeading(mag: Vec3, pitchRad: number, rollRad: number, settings?: OrientationSettings) {
   const Mx = mag.x;
@@ -33,7 +75,12 @@ export function tiltCompensatedHeading(mag: Vec3, pitchRad: number, rollRad: num
 
   const Xh = Mx * cosP + My * sinR * sinP + Mz * cosR * sinP;
   const Yh = My * cosR - Mz * sinR;
-  let headingRad = Math.atan2(-Yh, Xh);
+  // Reference heading to the device's top edge as "forward". In our accel-based
+  // altitude, we treat forward as -Y. To stay consistent, measure heading from -Y
+  // by flipping signs: atan2(-Xh, -Yh) which equals atan2(Xh, Yh) + 180°.
+  // This aligns the observed heading with Apple Compass in portrait
+  // (0° = North, 90° = East, 180° = South, 270° = West).
+  let headingRad = Math.atan2(-Xh, -Yh);
   let headingDeg = (headingRad * 180) / Math.PI;
   if (headingDeg < 0) headingDeg += 360.0;
 

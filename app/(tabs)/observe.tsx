@@ -5,7 +5,7 @@ import { useSettings } from "@/context/settings-context";
 import { useTargetContext } from "@/context/target-context";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { raDecToAltAz, rad2deg } from "@/lib/astro";
-import { getPitchRollFromAccel, tiltCompensatedHeading, type Vec3 } from "@/lib/orientation";
+import { altitudeFromAccel, getPitchRollFromAccel, tiltCompensatedHeading, type Vec3 } from "@/lib/orientation";
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import type { LocationObject } from "expo-location";
@@ -13,7 +13,7 @@ import * as Location from "expo-location";
 import { router } from 'expo-router';
 import { Accelerometer, Magnetometer } from "expo-sensors";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
+import { Alert, ScrollView, TouchableOpacity, View } from "react-native";
 
 // Fallback subscription type with remove() compatible with Expo listeners
 type ListenerSub = { remove: () => void } | null;
@@ -21,7 +21,6 @@ type ListenerSub = { remove: () => void } | null;
 export default function ObserveScreen() {
   // theme colors
   const textColor = useThemeColor({}, "text");
-  const bgColor = useThemeColor({}, "background");
   const iconColor = useThemeColor({}, "icon");
   const tint = useThemeColor({}, "tint");
   const successColor = useThemeColor({}, "success");
@@ -34,9 +33,10 @@ export default function ObserveScreen() {
   const [mag, setMag] = useState<Vec3>({ x: 0, y: 0, z: 0 });
 
   // computed orientation
-  const [pitchDeg, setPitchDeg] = useState(0); // degrees; used as Altitude (mapping may need adjust)
+  const [pitchDeg, setPitchDeg] = useState(0); // diagnostic
   const [rollDeg, setRollDeg] = useState(0);
   const [headingDeg, setHeadingDeg] = useState(0); // tilt-compensated magnetic heading (deg)
+  const [altitudeDeg, setAltitudeDeg] = useState(0); // computed from accel forward vs up
 
   // gps
   const [location, setLocation] = useState<LocationObject | null>(null);
@@ -65,6 +65,14 @@ export default function ObserveScreen() {
   // subs refs
   const accelSub = useRef<ListenerSub>(null);
   const magSub = useRef<ListenerSub>(null);
+  // raw refs (updated by listeners without causing re-render)
+  const accRef = useRef<Vec3>({ x: 0, y: 0, z: 0 });
+  const magRef = useRef<Vec3>({ x: 0, y: 0, z: 0 });
+  // smoothed refs
+  const headingRef = useRef(0);
+  const altRef = useRef(0);
+  const pitchRef = useRef(0);
+  const rollRef = useRef(0);
 
   // set sensor update intervals based on smoothing strength
   useEffect(() => {
@@ -90,10 +98,10 @@ export default function ObserveScreen() {
     Magnetometer.setUpdateInterval(magInterval);
 
     accelSub.current = Accelerometer.addListener((a) => {
-      setAccel(a);
+      accRef.current = a as Vec3;
     });
     magSub.current = Magnetometer.addListener((m) => {
-      setMag(m);
+      magRef.current = m as Vec3;
     });
 
     // request location permissions & start GPS
@@ -119,23 +127,61 @@ export default function ObserveScreen() {
     };
   }, [settings.smoothingStrength]);
 
-  // compute pitch/roll & heading whenever accel or mag updates
+  // Rate-limit and smooth orientation updates for stable UI
   useEffect(() => {
-    const { pitch, roll } = getPitchRollFromAccel(accel, settings); // radians
-    const pitchD = rad2deg(pitch);
-    const rollD = rad2deg(roll);
-    setPitchDeg(pitchD);
-    setRollDeg(rollD);
+    const clamp360 = (deg: number) => ((deg % 360) + 360) % 360;
+    const smoothLinear = (prev: number, next: number, alpha: number) => prev + alpha * (next - prev);
+    const smoothAngle = (prev: number, next: number, alpha: number) => {
+      const delta = ((next - prev + 540) % 360) - 180; // shortest path
+      return clamp360(prev + alpha * delta);
+    };
 
-    // compute tilt-compensated heading
-    const h = tiltCompensatedHeading(mag, pitch, roll, settings); // degrees 0..360
-    setHeadingDeg(h);
-  }, [accel, mag, settings]);
+    let alpha = 0.22;
+    let tickMs = 120;
+    if (settings.smoothingStrength === 'low') { alpha = 0.35; tickMs = 90; }
+    if (settings.smoothingStrength === 'high') { alpha = 0.12; tickMs = 160; }
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = () => {
+      const a = accRef.current;
+      const m = magRef.current;
+
+      // derive orientation
+      const { pitch, roll } = getPitchRollFromAccel(a, settings);
+      const headingRaw = tiltCompensatedHeading(m, pitch, roll, settings);
+      const altRaw = altitudeFromAccel(a, { forwardAxis: 'y', forwardSign: 1, flip: settings.flipAltitude });
+
+      // smooth
+      const nextPitchDeg = rad2deg(pitch);
+      const nextRollDeg = rad2deg(roll);
+      const sHeading = smoothAngle(headingRef.current, headingRaw, alpha);
+      const sAlt = smoothLinear(altRef.current, altRaw, alpha);
+      const sPitch = smoothLinear(pitchRef.current, nextPitchDeg, alpha);
+      const sRoll = smoothLinear(rollRef.current, nextRollDeg, alpha);
+
+      headingRef.current = sHeading;
+      altRef.current = sAlt;
+      pitchRef.current = sPitch;
+      rollRef.current = sRoll;
+
+      // push to UI
+      setHeadingDeg(sHeading);
+      setAltitudeDeg(sAlt);
+      setPitchDeg(sPitch);
+      setRollDeg(sRoll);
+      // also expose latest raw sensors for debug/details
+      setAccel(a);
+      setMag(m);
+    };
+
+    timer = setInterval(tick, tickMs);
+    return () => { if (timer) clearInterval(timer); };
+  }, [settings]);
 
   // Here we map device pitch -> Altitude (deg), headingDeg -> Azimuth (deg)
   // Depending on how you mount the phone, you might need to invert the sign of pitch,
   // or add/subtract 90°, etc. We'll give the user a simple "flip sign" option below in comments if needed.
-  const currentAlt = pitchDeg + altOffset; // user may need to invert sign: use -pitchDeg if necessary
+  const currentAlt = altitudeDeg + altOffset;
   let currentAz = headingDeg + azOffset;
   if (currentAz < 0) currentAz += 360;
   if (currentAz >= 360) currentAz -= 360;
@@ -208,7 +254,7 @@ export default function ObserveScreen() {
           onPress: () => {
             // compute offsets such that measured + offset = target
             const newAzOffset = (targetAz - headingDeg + 540) % 360 - 180; // normalized
-            const newAltOffset = targetAlt - pitchDeg; // pitch directly maps to altitude here
+            const newAltOffset = targetAlt - altitudeDeg; // match currentAlt computation
             setAzOffset(newAzOffset);
             setAltOffset(newAltOffset);
             Alert.alert("SYNC Complete", `Calibration stored!\nAzimuth: ${newAzOffset.toFixed(2)}°\nAltitude: ${newAltOffset.toFixed(2)}°`);
@@ -267,19 +313,40 @@ export default function ObserveScreen() {
           </View>
 
           <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 12 }}>
-            <View style={{ alignItems: "center" }}>
+            <TouchableOpacity
+              style={{ alignItems: "center" }}
+              onPress={() => router.push({
+                pathname: '/altitude-details',
+                params: { altOffset: altOffset.toString() }
+              })}
+            >
               <ThemedText style={{ fontSize: 24, fontWeight: "bold" }}>
-                {currentAlt.toFixed(1)}°
+                {currentAlt.toFixed(0)}°
               </ThemedText>
               <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Altitude</ThemedText>
-            </View>
+            </TouchableOpacity>
 
-            <View style={{ alignItems: "center" }}>
+            <TouchableOpacity 
+              style={{ alignItems: "center" }}
+              onPress={() => router.push({
+                pathname: '/compass-details',
+                params: {
+                  currentAz: currentAz.toString(),
+                  currentAlt: currentAlt.toString(),
+                  rollDeg: rollDeg.toString(),
+                  headingDeg: headingDeg.toString(),
+                  azOffset: azOffset.toString(),
+                  altOffset: altOffset.toString(),
+                  accel: JSON.stringify(accel),
+                  mag: JSON.stringify(mag)
+                }
+              })}
+            >
               <ThemedText style={{ fontSize: 24, fontWeight: "bold" }}>
-                {currentAz.toFixed(1)}°
+                {currentAz.toFixed(0)}°
               </ThemedText>
               <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Azimuth</ThemedText>
-            </View>
+            </TouchableOpacity>
           </View>
 
           <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
