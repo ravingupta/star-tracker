@@ -364,65 +364,13 @@ export default function ObserveScreen() {
           </View>
 
           {(azOffset !== 0 || altOffset !== 0) && (
-            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: iconColor }}>
-              <ThemedText style={{ fontSize: 12, textAlign: "center", opacity: 0.8 }}>
+            <View style={{ marginTop: 8, paddingTop: 8 }}>
+              <ThemedText style={{ fontSize: 10, textAlign: "center", opacity: 0.6 }}>
                 Calibrated: Az +{azOffset.toFixed(1)}° • Alt +{altOffset.toFixed(1)}°
               </ThemedText>
             </View>
           )}
         </ThemedView>
-
-        {/* Debug Overlay */}
-        {settings.debugOverlay && (
-          <ThemedView style={{
-            borderWidth: 1,
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 16,
-            borderColor: borderColor,
-            backgroundColor: cardBgColor,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.1,
-            shadowRadius: 4,
-            elevation: 3
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' }}>
-              <MaterialIcons name="bug-report" size={24} color={tint} style={{ marginRight: 8 }} />
-              <ThemedText type="subtitle">
-                Sensor Debug
-              </ThemedText>
-            </View>
-
-            <View style={{ marginBottom: 8 }}>
-              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Accelerometer</ThemedText>
-              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
-                X: {accel.x.toFixed(3)}, Y: {accel.y.toFixed(3)}, Z: {accel.z.toFixed(3)}
-              </ThemedText>
-            </View>
-
-            <View style={{ marginBottom: 8 }}>
-              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Magnetometer</ThemedText>
-              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
-                X: {mag.x.toFixed(3)}, Y: {mag.y.toFixed(3)}, Z: {mag.z.toFixed(3)}
-              </ThemedText>
-            </View>
-
-            <View style={{ marginBottom: 8 }}>
-              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Location</ThemedText>
-              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
-                Lat: {location?.coords.latitude.toFixed(6)}, Lon: {location?.coords.longitude.toFixed(6)}
-              </ThemedText>
-            </View>
-
-            <View>
-              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Settings</ThemedText>
-              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
-                Smoothing: {settings.smoothingStrength}, Flip Alt: {settings.flipAltitude ? 'Y' : 'N'}, Offset: {settings.headingOffset}°
-              </ThemedText>
-            </View>
-          </ThemedView>
-        )}
 
         {/* Target Selection - Show when no target selected */}
         {target === null && !useManual && (
@@ -531,6 +479,134 @@ export default function ObserveScreen() {
                 </ThemedText>
               </View>
             </View>
+
+            {/* Fine print details */}
+            <View style={{ marginTop: 8, paddingTop: 8, opacity: 0.6 }}>
+              {settings.selectedTelescopeId && (() => {
+                const selectedScope = settings.telescopes.find(t => t.id === settings.selectedTelescopeId);
+                const selectedEp = selectedScope?.eyepieces.find(e => e.id === settings.selectedEyepieceId);
+                if (!selectedScope || !selectedEp) return null;
+                const magnification = Math.round((selectedScope.focalLengthMm / selectedEp.focalLengthMm) * 10) / 10;
+                const tfov = selectedEp.apparentFovDeg ? Math.round((selectedEp.apparentFovDeg / magnification) * 10) / 10 : undefined;
+                if (!tfov) return null;
+                const driftMinutes = Math.round(((tfov / 2) / 15) * 60); // 15° per hour, from center to edge
+                return (
+                  <ThemedText style={{ fontSize: 10, textAlign: 'center', lineHeight: 14, marginTop: 4 }}>
+                    Object drifts from center to edge of {tfov}° field in ~{driftMinutes} minutes
+                  </ThemedText>
+                );
+              })()}
+            </View>
+          </ThemedView>
+        )}
+
+        {settings.debugOverlay && (
+          <ThemedView style={{
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16,
+            borderColor: borderColor,
+            backgroundColor: cardBgColor,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 3
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' }}>
+              <MaterialIcons name="bug-report" size={24} color={tint} style={{ marginRight: 8 }} />
+              <ThemedText type="subtitle">
+                Sensor Debug
+              </ThemedText>
+            </View>
+
+            <View style={{ marginBottom: 8 }}>
+              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Accelerometer</ThemedText>
+              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
+                X: {accel.x.toFixed(3)}, Y: {accel.y.toFixed(3)}, Z: {accel.z.toFixed(3)}
+              </ThemedText>
+            </View>
+
+            <View style={{ marginBottom: 8 }}>
+              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Magnetometer</ThemedText>
+              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
+                X: {mag.x.toFixed(3)}, Y: {mag.y.toFixed(3)}, Z: {mag.z.toFixed(3)}
+              </ThemedText>
+            </View>
+
+            <View style={{ marginBottom: 8 }}>
+              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Location</ThemedText>
+              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
+                Lat: {location?.coords.latitude.toFixed(6)}, Lon: {location?.coords.longitude.toFixed(6)}
+              </ThemedText>
+            </View>
+
+            <View>
+              <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Settings</ThemedText>
+              <ThemedText style={{ fontSize: 10, fontFamily: 'monospace' }}>
+                Smoothing: {settings.smoothingStrength}, Flip Alt: {settings.flipAltitude ? 'Y' : 'N'}, Offset: {settings.headingOffset}°
+              </ThemedText>
+            </View>
+          </ThemedView>
+        )}
+
+        {/* Selected Optics Details */}
+        {settings.selectedTelescopeId && (
+          <ThemedView style={{
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16,
+            borderColor: borderColor,
+            backgroundColor: cardBgColor,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 3
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' }}>
+              <MaterialIcons name="filter-center-focus" size={24} color={tint} style={{ marginRight: 8 }} />
+              <ThemedText type="subtitle">
+                Optics
+              </ThemedText>
+            </View>
+
+            {(() => {
+              const selectedScope = settings.telescopes.find(t => t.id === settings.selectedTelescopeId);
+              const selectedEp = selectedScope?.eyepieces.find(e => e.id === settings.selectedEyepieceId);
+              if (!selectedScope || !selectedEp) return null;
+
+              const magnification = Math.round((selectedScope.focalLengthMm / selectedEp.focalLengthMm) * 10) / 10;
+              const tfov = selectedEp.apparentFovDeg ? Math.round((selectedEp.apparentFovDeg / magnification) * 10) / 10 : undefined;
+
+              return (
+                <View>
+                  <View style={{ marginBottom: 8 }}>
+                    <ThemedText style={{ fontWeight: '600' }}>{selectedScope.name}</ThemedText>
+                    <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                      {selectedScope.apertureMm}mm aperture • {selectedScope.focalLengthMm}mm focal • f/{Math.round((selectedScope.focalLengthMm / selectedScope.apertureMm) * 10) / 10}
+                    </ThemedText>
+                    <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                      Light gathering: {Math.round((selectedScope.apertureMm / 50) ** 2)}x human eye
+                    </ThemedText>
+                  </View>
+
+                  <View>
+                    <ThemedText style={{ fontWeight: '600' }}>{selectedEp.name || `${selectedEp.focalLengthMm}mm`}</ThemedText>
+                    <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                      {selectedEp.focalLengthMm}mm focal • {magnification}x magnification{tfov ? ` • ${tfov}° true field of view` : ''}
+                    </ThemedText>
+                    {selectedEp.apparentFovDeg && (
+                      <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                        Apparent FOV: {selectedEp.apparentFovDeg}°
+                      </ThemedText>
+                    )}
+                  </View>
+                </View>
+              );
+            })()}
           </ThemedView>
         )}
 

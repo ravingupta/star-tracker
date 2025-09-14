@@ -12,6 +12,7 @@ type ThemedButtonProps = {
   disabled?: boolean;
   style?: ViewStyle | ViewStyle[];
   variant?: 'primary' | 'outline';
+  size?: 'sm' | 'md' | 'lg';
   accessibilityLabel?: string;
   borderColor?: string;
 };
@@ -23,6 +24,7 @@ export function ThemedButton({
   disabled,
   style,
   variant = 'primary',
+  size = 'md',
   accessibilityLabel,
   borderColor,
 }: ThemedButtonProps) {
@@ -33,8 +35,8 @@ export function ThemedButton({
   const primaryTextColor = colorScheme === 'dark' ? Colors.light.text : '#fff';
 
   const baseStyle: ViewStyle = {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: size === 'sm' ? 6 : size === 'lg' ? 14 : 12,
+    paddingHorizontal: size === 'sm' ? 10 : size === 'lg' ? 18 : 16,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -66,7 +68,7 @@ export function ThemedButton({
         children
       ) : (
         <ThemedText
-          style={{ color: variant === 'primary' ? primaryTextColor : (borderColor || tint), fontWeight: '600' }}
+          style={{ color: variant === 'primary' ? primaryTextColor : (borderColor || tint), fontWeight: '600', fontSize: size === 'sm' ? 12 : 14 }}
         >
           {title}
         </ThemedText>

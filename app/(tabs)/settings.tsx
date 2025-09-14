@@ -1,10 +1,11 @@
 import { ThemedButton } from '@/components/ui/themed-button';
 import { ThemedText } from '@/components/ui/themed-text';
 import { ThemedView } from '@/components/ui/themed-view';
+import type { Eyepiece, Telescope } from '@/context/settings-context';
 import { useSettings } from '@/context/settings-context';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, Switch, TextInput, View } from 'react-native';
 
 export default function SettingsScreen() {
@@ -14,7 +15,20 @@ export default function SettingsScreen() {
   const borderColor = useThemeColor({}, "border");
   const textColor = useThemeColor({}, "text");
 
-  const { settings, updateSetting, resetSettings } = useSettings();
+  const { settings, updateSetting, resetSettings, addTelescope, addEyepieceToTelescope, deleteTelescope, removeEyepieceFromTelescope } = useSettings();
+
+  // Local state for add forms
+  const [showAddScope, setShowAddScope] = useState(false);
+  const [newScopeName, setNewScopeName] = useState('');
+  const [newScopeAperture, setNewScopeAperture] = useState('');
+  const [newScopeFocal, setNewScopeFocal] = useState('');
+
+  const [showAddEyepiece, setShowAddEyepiece] = useState(false);
+  const [newEpName, setNewEpName] = useState('');
+  const [newEpFocal, setNewEpFocal] = useState('');
+  const [newEpAfov, setNewEpAfov] = useState('');
+
+  const selectedScope = useMemo(() => settings.telescopes.find(t => t.id === settings.selectedTelescopeId) ?? settings.telescopes[0], [settings]);
 
   const handleResetSettings = () => {
     Alert.alert(
@@ -52,6 +66,40 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleAddScope = () => {
+    if (!addTelescope) return;
+    const aperture = parseFloat(newScopeAperture);
+    const focal = parseFloat(newScopeFocal);
+    if (!newScopeName || !aperture || !focal) {
+      Alert.alert('Invalid scope', 'Please enter name, aperture (mm) and focal length (mm).');
+      return;
+    }
+    const id = `tel_${Date.now().toString(36)}_${Math.round(Math.random()*1e6)}`;
+    const scope: Telescope = { id, name: newScopeName.trim(), apertureMm: aperture, focalLengthMm: focal, eyepieces: [] };
+    addTelescope(scope);
+    setNewScopeName('');
+    setNewScopeAperture('');
+    setNewScopeFocal('');
+    setShowAddScope(false);
+  };
+
+  const handleAddEyepiece = () => {
+    if (!addEyepieceToTelescope || !selectedScope) return;
+    const fl = parseFloat(newEpFocal);
+    const af = newEpAfov ? parseFloat(newEpAfov) : undefined;
+    if (!newEpName || !fl) {
+      Alert.alert('Invalid eyepiece', 'Please enter name and focal length (mm).');
+      return;
+    }
+    const id = `ep_${Date.now().toString(36)}_${Math.round(Math.random()*1e6)}`;
+    const ep: Eyepiece = { id, name: newEpName.trim(), focalLengthMm: fl, apparentFovDeg: af };
+    addEyepieceToTelescope(selectedScope.id, ep);
+    setNewEpName('');
+    setNewEpFocal('');
+    setNewEpAfov('');
+    setShowAddEyepiece(false);
+  };
+
   return (
     <ThemedView style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: 14, alignItems: "stretch" }}>
@@ -79,6 +127,13 @@ export default function SettingsScreen() {
               Orientation Settings
             </ThemedText>
           </View>
+
+          {/* Selected scope specs */}
+          {selectedScope && (
+            <ThemedText style={{ opacity: 0.7, fontSize: 12, marginBottom: 8 }}>
+              {`${selectedScope.apertureMm}mm • ${selectedScope.focalLengthMm}mm (f/${Math.round((selectedScope.focalLengthMm / selectedScope.apertureMm) * 10) / 10})`}
+            </ThemedText>
+          )}
 
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <View style={{ flex: 1 }}>
@@ -304,6 +359,194 @@ export default function SettingsScreen() {
               editable={false} // future feature
             />
           </View>
+        </ThemedView>
+
+        {/* Optics: Telescopes & Eyepieces */}
+        <ThemedView style={{
+          borderWidth: 1,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 16,
+          borderColor: borderColor,
+          backgroundColor: cardBgColor,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          elevation: 3
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' }}>
+            <MaterialIcons name="filter-center-focus" size={24} color={tint} style={{ marginRight: 8 }} />
+            <ThemedText type="subtitle">Optics</ThemedText>
+          </View>
+
+          {/* Telescope selector - table style */}
+          <ThemedText style={{ marginBottom: 8, fontWeight: '600' }}>Telescope</ThemedText>
+          <View style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, overflow: 'hidden' }}>
+            {settings.telescopes.map((scope, index) => {
+              const isSelected = settings.selectedTelescopeId === scope.id;
+              return (
+                <View key={scope.id} style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 12,
+                  backgroundColor: isSelected ? tint + '20' : bgColor,
+                  borderBottomWidth: index < settings.telescopes.length - 1 ? 1 : 0,
+                  borderBottomColor: borderColor,
+                }}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={{ fontWeight: '600' }}>{scope.name}</ThemedText>
+                    <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                      {`${scope.apertureMm}mm • ${scope.focalLengthMm}mm (f/${Math.round((scope.focalLengthMm / scope.apertureMm) * 10) / 10})`}
+                    </ThemedText>
+                  </View>
+                  <ThemedButton
+                    title={isSelected ? 'Selected' : 'Select'}
+                    variant={isSelected ? 'primary' : 'outline'}
+                    size="sm"
+                    onPress={() => updateSetting('selectedTelescopeId', scope.id)}
+                  />
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Add Telescope */}
+          <View style={{ marginTop: 16 }}>
+            <ThemedButton title={showAddScope ? 'Cancel Adding Telescope' : 'Add Telescope'} variant="outline" size="sm" onPress={() => setShowAddScope(v => !v)} />
+            {selectedScope && deleteTelescope && settings.telescopes.length > 1 && (
+              <ThemedButton title="Delete Selected Telescope" variant="outline" size="sm" onPress={() => {
+                Alert.alert('Delete telescope', `Delete "${selectedScope.name}"?`, [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => deleteTelescope(selectedScope.id) }
+                ]);
+              }} style={{ marginLeft: 8 }} />
+            )}
+          </View>
+
+          {showAddScope && (
+            <View style={{ marginTop: 12, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 12, backgroundColor: bgColor }}>
+              <ThemedText style={{ marginBottom: 6, fontWeight: '600' }}>New Telescope</ThemedText>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                placeholder="Name (e.g., 130/650 Newtonian)"
+                value={newScopeName}
+                onChangeText={setNewScopeName}
+              />
+              <View style={{ flexDirection: 'row' }}>
+                <TextInput
+                  style={{ flex: 1, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginRight: 6 }}
+                  placeholder="Aperture (mm)"
+                  keyboardType="numeric"
+                  value={newScopeAperture}
+                  onChangeText={setNewScopeAperture}
+                />
+                <TextInput
+                  style={{ flex: 1, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor }}
+                  placeholder="Focal length (mm)"
+                  keyboardType="numeric"
+                  value={newScopeFocal}
+                  onChangeText={setNewScopeFocal}
+                />
+              </View>
+              <View style={{ marginTop: 8, flexDirection: 'row' }}>
+                <ThemedButton title="Save" onPress={handleAddScope} size="sm" style={{ marginRight: 8 }} />
+                <ThemedButton title="Cancel" variant="outline" size="sm" onPress={() => setShowAddScope(false)} />
+              </View>
+            </View>
+          )}
+
+          {/* Eyepieces for selected scope - table style */}
+          {selectedScope && (
+            <View style={{ marginTop: 16 }}>
+              <ThemedText style={{ marginBottom: 8, fontWeight: '600' }}>Eyepiece</ThemedText>
+              <View style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, overflow: 'hidden' }}>
+                {selectedScope.eyepieces.map((ep, index) => {
+                  const isSelected = settings.selectedEyepieceId === ep.id;
+                  const magnification = Math.round((selectedScope.focalLengthMm / ep.focalLengthMm) * 10) / 10;
+                  const tfov = ep.apparentFovDeg ? Math.round((ep.apparentFovDeg / magnification) * 10) / 10 : undefined;
+                  return (
+                    <View key={ep.id} style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      padding: 12,
+                      backgroundColor: isSelected ? tint + '20' : bgColor,
+                      borderBottomWidth: index < selectedScope.eyepieces.length - 1 ? 1 : 0,
+                      borderBottomColor: borderColor,
+                    }}>
+                      <View style={{ flex: 1 }}>
+                        <ThemedText style={{ fontWeight: '600' }}>{ep.name || `${ep.focalLengthMm}mm`}</ThemedText>
+                        <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                          {`${ep.focalLengthMm}mm`}{ep.apparentFovDeg ? ` • ${ep.apparentFovDeg}° AFOV` : ''} • {magnification}x{tfov ? ` • ${tfov}° TFOV` : ''}
+                        </ThemedText>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <ThemedButton
+                          title={isSelected ? 'Selected' : 'Select'}
+                          variant={isSelected ? 'primary' : 'outline'}
+                          size="sm"
+                          onPress={() => updateSetting('selectedEyepieceId', ep.id)}
+                          style={{ marginRight: 8 }}
+                        />
+                        <ThemedButton
+                          accessibilityLabel={`Delete ${ep.name || `${ep.focalLengthMm}mm`}`}
+                          variant="outline"
+                          size="sm"
+                          onPress={() => {
+                            Alert.alert('Delete eyepiece', `Remove "${ep.name || `${ep.focalLengthMm}mm`}" from ${selectedScope.name}?`, [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => removeEyepieceFromTelescope && removeEyepieceFromTelescope(selectedScope.id, ep.id) }
+                            ]);
+                          }}
+                        >
+                          <MaterialIcons name="delete" size={16} color={tint} />
+                        </ThemedButton>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Add Eyepiece */}
+          {selectedScope && (
+            <View style={{ marginTop: 16 }}>
+              <ThemedButton title={showAddEyepiece ? 'Cancel Adding Eyepiece' : 'Add Eyepiece'} variant="outline" size="sm" onPress={() => setShowAddEyepiece(v => !v)} />
+            </View>
+          )}
+
+          {showAddEyepiece && selectedScope && (
+            <View style={{ marginTop: 12, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 12, backgroundColor: bgColor }}>
+              <ThemedText style={{ marginBottom: 6, fontWeight: '600' }}>New Eyepiece for {selectedScope.name}</ThemedText>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                placeholder="Name (e.g., 25mm Plössl)"
+                value={newEpName}
+                onChangeText={setNewEpName}
+              />
+              <View style={{ flexDirection: 'row' }}>
+                <TextInput
+                  style={{ flex: 1, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginRight: 6 }}
+                  placeholder="Focal length (mm)"
+                  keyboardType="numeric"
+                  value={newEpFocal}
+                  onChangeText={setNewEpFocal}
+                />
+                <TextInput
+                  style={{ flex: 1, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor }}
+                  placeholder="AFOV (°) optional"
+                  keyboardType="numeric"
+                  value={newEpAfov}
+                  onChangeText={setNewEpAfov}
+                />
+              </View>
+              <View style={{ marginTop: 8, flexDirection: 'row' }}>
+                <ThemedButton title="Save" onPress={handleAddEyepiece} size="sm" style={{ marginRight: 8 }} />
+                <ThemedButton title="Cancel" variant="outline" size="sm" onPress={() => setShowAddEyepiece(false)} />
+              </View>
+            </View>
+          )}
         </ThemedView>
 
         {/* About */}
