@@ -16,6 +16,11 @@ export type Settings = {
   telescopes: Telescope[];
   selectedTelescopeId?: string;
   selectedEyepieceId?: string;
+  // Filters
+  filters: Filter[];
+  selectedFilterId?: string;
+  // Light pollution level
+  lightPollutionLevel: LightPollutionLevel;
 };
 
 export type Eyepiece = {
@@ -32,6 +37,21 @@ export type Telescope = {
   focalLengthMm: number;
   eyepieces: Eyepiece[];
 };
+
+export type Filter = {
+  id: string;
+  name: string; // e.g., "UHC-S"
+  type: 'broadband' | 'narrowband' | 'line' | 'light_pollution' | 'color' | 'other';
+  description?: string; // optional description
+  // For narrowband/line filters, the central wavelength in nm
+  centralWavelengthNm?: number;
+  // Bandwidth in nm for narrowband filters
+  bandwidthNm?: number;
+  // Transmission percentage (0-100)
+  transmissionPercent?: number;
+};
+
+export type LightPollutionLevel = 'none' | 'low' | 'moderate' | 'high' | 'severe';
 
 const defaultSettings: Settings = {
   flipAltitude: false,
@@ -59,6 +79,15 @@ const defaultSettings: Settings = {
   ],
   selectedTelescopeId: 'tel_default_130_650',
   selectedEyepieceId: 'ep_25_68',
+  filters: [
+    { id: 'filter_none', name: 'No Filter', type: 'other', description: 'No filter applied' },
+    { id: 'filter_uhc', name: 'UHC-S', type: 'narrowband', description: 'Ultra High Contrast Sulfur filter', centralWavelengthNm: 656, bandwidthNm: 30, transmissionPercent: 85 },
+    { id: 'filter_oiii', name: 'OIII', type: 'line', description: 'Oxygen III filter', centralWavelengthNm: 501, bandwidthNm: 3, transmissionPercent: 90 },
+    { id: 'filter_h_beta', name: 'H-Beta', type: 'line', description: 'Hydrogen Beta filter', centralWavelengthNm: 486, bandwidthNm: 3, transmissionPercent: 90 },
+    { id: 'filter_light_pollution', name: 'Light Pollution', type: 'light_pollution', description: 'Blocks sodium/mercury streetlights', transmissionPercent: 70 },
+  ],
+  selectedFilterId: 'filter_none',
+  lightPollutionLevel: 'moderate',
 };
 
 type SettingsState = {
@@ -70,6 +99,8 @@ type SettingsState = {
   deleteTelescope?: (telescopeId: string) => void;
   addEyepieceToTelescope?: (telescopeId: string, eyepiece: Eyepiece) => void;
   removeEyepieceFromTelescope?: (telescopeId: string, eyepieceId: string) => void;
+  addFilter?: (filter: Filter) => void;
+  deleteFilter?: (filterId: string) => void;
 };
 
 const SettingsContext = createContext<SettingsState | undefined>(undefined);
@@ -170,6 +201,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const addFilter = (filter: Filter) => {
+    setSettings(prev => ({
+      ...prev,
+      filters: [...prev.filters, filter],
+      selectedFilterId: filter.id,
+    }));
+  };
+
+  const deleteFilter = (filterId: string) => {
+    setSettings(prev => {
+      const remaining = prev.filters.filter(f => f.id !== filterId);
+      const wasSelected = prev.selectedFilterId === filterId;
+      return {
+        ...prev,
+        filters: remaining,
+        selectedFilterId: wasSelected ? remaining[0]?.id : prev.selectedFilterId,
+      };
+    });
+  };
+
   const resetSettings = () => {
     setSettings(defaultSettings);
   };
@@ -183,6 +234,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   deleteTelescope,
   addEyepieceToTelescope,
   removeEyepieceFromTelescope,
+  addFilter,
+  deleteFilter,
   };
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

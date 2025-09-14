@@ -5,7 +5,7 @@ import { useSettings } from "@/context/settings-context";
 import { useTargetContext } from "@/context/target-context";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { raDecToAltAz, rad2deg } from "@/lib/astro";
-import { altitudeFromAccel, getPitchRollFromAccel, tiltCompensatedHeading, type Vec3 } from "@/lib/orientation";
+import { altitudeFromAccel, azimuthFromAccelMag, getPitchRollFromAccel, type Vec3 } from "@/lib/orientation";
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import type { LocationObject } from "expo-location";
@@ -148,8 +148,9 @@ export default function ObserveScreen() {
 
       // derive orientation
       const { pitch, roll } = getPitchRollFromAccel(a, settings);
-      const headingRaw = tiltCompensatedHeading(m, pitch, roll, settings);
-      const altRaw = altitudeFromAccel(a, { forwardAxis: 'y', forwardSign: 1, flip: settings.flipAltitude });
+      // const headingRaw = tiltCompensatedHeading(m, pitch, roll, settings);
+  const headingRaw = azimuthFromAccelMag(a, m, settings, { forwardAxis: 'y', forwardSign: 1 });
+  const altRaw = altitudeFromAccel(a, { forwardAxis: 'y', forwardSign: 1, flip: settings.flipAltitude });
 
       // smooth
       const nextPitchDeg = rad2deg(pitch);
@@ -286,6 +287,49 @@ export default function ObserveScreen() {
       ]
     );
   }
+
+  // Get recommended filters based on target type and light pollution
+  const getRecommendedFilters = () => {
+    if (!target && !useManual) return [];
+    
+    const targetType = useManual ? 'manual' : target?.type;
+    const pollution = settings.lightPollutionLevel;
+    
+    const recommendations: string[] = [];
+    
+    // Light pollution filters for high pollution areas
+    if (pollution === 'high' || pollution === 'severe') {
+      recommendations.push('Light Pollution');
+    }
+    
+    // Target-specific recommendations
+    switch (targetType) {
+      case 'nebula':
+        recommendations.push('Narrowband', 'UHC-S', 'OIII', 'H-Beta');
+        break;
+      case 'galaxy':
+        if (pollution === 'moderate' || pollution === 'high' || pollution === 'severe') {
+          recommendations.push('Light Pollution');
+        }
+        break;
+      case 'cluster':
+        if (pollution === 'moderate' || pollution === 'high' || pollution === 'severe') {
+          recommendations.push('Light Pollution');
+        }
+        break;
+      case 'star':
+        // Stars usually don't need filters, but light pollution can help
+        if (pollution === 'high' || pollution === 'severe') {
+          recommendations.push('Light Pollution');
+        }
+        break;
+    }
+    
+    return [...new Set(recommendations)]; // Remove duplicates
+  };
+
+  const recommendedFilters = getRecommendedFilters();
+  const selectedFilter = settings.filters.find(f => f.id === settings.selectedFilterId);
 
   return (
     <ThemedView style={{ flex: 1 }}>
@@ -607,6 +651,79 @@ export default function ObserveScreen() {
                 </View>
               );
             })()}
+          </ThemedView>
+        )}
+
+        {/* Filter Recommendations */}
+        {(target || useManual) && recommendedFilters.length > 0 && (
+          <ThemedView style={{
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 16,
+            borderColor: borderColor,
+            backgroundColor: cardBgColor,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 3
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' }}>
+              <MaterialIcons name="filter-list" size={24} color={tint} style={{ marginRight: 8 }} />
+              <ThemedText type="subtitle">
+                Filter Recommendations
+              </ThemedText>
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <ThemedText style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>
+                Recommended for {useManual ? 'manual target' : `${target?.name} (${target?.type})`} in {settings.lightPollutionLevel} light pollution:
+              </ThemedText>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {recommendedFilters.map((filterType) => (
+                  <View key={filterType} style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 12,
+                    backgroundColor: tint + '20',
+                    borderWidth: 1,
+                    borderColor: tint + '40'
+                  }}>
+                    <ThemedText style={{ fontSize: 12, fontWeight: '500' }}>{filterType}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {selectedFilter && selectedFilter.id !== 'filter_none' && (
+              <View>
+                <ThemedText style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>
+                  Selected: {selectedFilter.name}
+                </ThemedText>
+                <ThemedText style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                  {selectedFilter.description || `${selectedFilter.type} filter`}
+                </ThemedText>
+                {selectedFilter.transmissionPercent && (
+                  <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                    Transmission: {selectedFilter.transmissionPercent}%
+                  </ThemedText>
+                )}
+                {selectedFilter.centralWavelengthNm && (
+                  <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                    Center wavelength: {selectedFilter.centralWavelengthNm}nm
+                    {selectedFilter.bandwidthNm && ` (±${selectedFilter.bandwidthNm/2}nm)`}
+                  </ThemedText>
+                )}
+                <ThemedText style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontStyle: 'italic' }}>
+                  {selectedFilter.type === 'narrowband' && 'Enhances faint nebulae by blocking light pollution and isolating emission lines.'}
+                  {selectedFilter.type === 'line' && 'Targets specific emission lines from ionized gases in nebulae.'}
+                  {selectedFilter.type === 'light_pollution' && 'Blocks artificial light from sodium/mercury streetlights, improves contrast.'}
+                  {selectedFilter.type === 'broadband' && 'General light transmission with some color correction.'}
+                  {selectedFilter.type === 'color' && 'Enhances color contrast and planetary details.'}
+                </ThemedText>
+              </View>
+            )}
           </ThemedView>
         )}
 

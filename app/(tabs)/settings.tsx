@@ -2,11 +2,11 @@ import { ThemedButton } from '@/components/ui/themed-button';
 import { ThemedText } from '@/components/ui/themed-text';
 import { ThemedView } from '@/components/ui/themed-view';
 import type { Eyepiece, Telescope } from '@/context/settings-context';
-import { useSettings } from '@/context/settings-context';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, Switch, TextInput, View } from 'react-native';
+import { Alert, ScrollView, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { Filter, useSettings } from '../../context/settings-context';
 
 export default function SettingsScreen() {
   const tint = useThemeColor({}, "tint");
@@ -14,8 +14,9 @@ export default function SettingsScreen() {
   const cardBgColor = useThemeColor({}, "cardBackground");
   const borderColor = useThemeColor({}, "border");
   const textColor = useThemeColor({}, "text");
+  const errorColor = useThemeColor({}, "error");
 
-  const { settings, updateSetting, resetSettings, addTelescope, addEyepieceToTelescope, deleteTelescope, removeEyepieceFromTelescope } = useSettings();
+  const { settings, updateSetting, resetSettings, addTelescope, addEyepieceToTelescope, deleteTelescope, removeEyepieceFromTelescope, addFilter, deleteFilter } = useSettings();
 
   // Local state for add forms
   const [showAddScope, setShowAddScope] = useState(false);
@@ -27,6 +28,14 @@ export default function SettingsScreen() {
   const [newEpName, setNewEpName] = useState('');
   const [newEpFocal, setNewEpFocal] = useState('');
   const [newEpAfov, setNewEpAfov] = useState('');
+
+  const [showAddFilter, setShowAddFilter] = useState(false);
+  const [newFilterName, setNewFilterName] = useState('');
+  const [newFilterType, setNewFilterType] = useState<Filter['type']>('other');
+  const [newFilterDesc, setNewFilterDesc] = useState('');
+  const [newFilterWavelength, setNewFilterWavelength] = useState('');
+  const [newFilterBandwidth, setNewFilterBandwidth] = useState('');
+  const [newFilterTransmission, setNewFilterTransmission] = useState('');
 
   const selectedScope = useMemo(() => settings.telescopes.find(t => t.id === settings.selectedTelescopeId) ?? settings.telescopes[0], [settings]);
 
@@ -98,6 +107,32 @@ export default function SettingsScreen() {
     setNewEpFocal('');
     setNewEpAfov('');
     setShowAddEyepiece(false);
+  };
+
+  const handleAddFilter = () => {
+    if (!addFilter) return;
+    if (!newFilterName) {
+      Alert.alert('Invalid filter', 'Please enter filter name.');
+      return;
+    }
+    const id = `filter_${Date.now().toString(36)}_${Math.round(Math.random()*1e6)}`;
+    const filter: Filter = {
+      id,
+      name: newFilterName.trim(),
+      type: newFilterType,
+      description: newFilterDesc.trim() || undefined,
+      centralWavelengthNm: newFilterWavelength ? parseFloat(newFilterWavelength) : undefined,
+      bandwidthNm: newFilterBandwidth ? parseFloat(newFilterBandwidth) : undefined,
+      transmissionPercent: newFilterTransmission ? parseFloat(newFilterTransmission) : undefined,
+    };
+    addFilter(filter);
+    setNewFilterName('');
+    setNewFilterType('other');
+    setNewFilterDesc('');
+    setNewFilterWavelength('');
+    setNewFilterBandwidth('');
+    setNewFilterTransmission('');
+    setShowAddFilter(false);
   };
 
   return (
@@ -544,6 +579,176 @@ export default function SettingsScreen() {
               <View style={{ marginTop: 8, flexDirection: 'row' }}>
                 <ThemedButton title="Save" onPress={handleAddEyepiece} size="sm" style={{ marginRight: 8 }} />
                 <ThemedButton title="Cancel" variant="outline" size="sm" onPress={() => setShowAddEyepiece(false)} />
+              </View>
+            </View>
+          )}
+        </ThemedView>
+
+        {/* Filters & Light Pollution */}
+        <ThemedView style={{
+          borderWidth: 1,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 16,
+          borderColor: borderColor,
+          backgroundColor: cardBgColor,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          elevation: 3
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' }}>
+            <MaterialIcons name="filter-list" size={24} color={tint} style={{ marginRight: 8 }} />
+            <ThemedText type="subtitle">Filters & Light Pollution</ThemedText>
+          </View>
+
+          {/* Light Pollution Level */}
+          <ThemedText style={{ marginBottom: 8, fontWeight: '600' }}>Light Pollution Level</ThemedText>
+          <View style={{ marginBottom: 16 }}>
+            {[
+              { label: 'None (Dark Sky)', value: 'none' as const },
+              { label: 'Low (Rural)', value: 'low' as const },
+              { label: 'Moderate (Suburban)', value: 'moderate' as const },
+              { label: 'High (Urban)', value: 'high' as const },
+              { label: 'Severe (City Center)', value: 'severe' as const },
+            ].map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={{
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: borderColor,
+                  borderRadius: 8,
+                  marginBottom: 4,
+                  backgroundColor: settings.lightPollutionLevel === option.value ? tint + '20' : bgColor,
+                }}
+                onPress={() => updateSetting('lightPollutionLevel', option.value)}
+              >
+                <ThemedText style={{ textAlign: 'center' }}>{option.label}</ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Filter selector - table style */}
+          <ThemedText style={{ marginBottom: 8, fontWeight: '600' }}>Filter</ThemedText>
+          <View style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, overflow: 'hidden' }}>
+            {settings.filters.map((filter, index) => (
+              <TouchableOpacity
+                key={filter.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 12,
+                  backgroundColor: settings.selectedFilterId === filter.id ? tint + '20' : 'transparent',
+                  borderBottomWidth: index < settings.filters.length - 1 ? 1 : 0,
+                  borderBottomColor: borderColor,
+                }}
+                onPress={() => updateSetting('selectedFilterId', filter.id)}
+              >
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={{ fontWeight: '500' }}>{filter.name}</ThemedText>
+                  <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>
+                    {filter.type} {filter.description ? `• ${filter.description}` : ''}
+                  </ThemedText>
+                </View>
+                {settings.filters.length > 1 && deleteFilter && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete Filter',
+                        `Remove ${filter.name}?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: () => deleteFilter(filter.id)
+                          }
+                        ]
+                      );
+                    }}
+                    style={{ padding: 4 }}
+                  >
+                    <MaterialIcons name="delete" size={20} color={errorColor} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Add Filter */}
+          <View style={{ marginTop: 16 }}>
+            <ThemedButton title={showAddFilter ? 'Cancel Adding Filter' : 'Add Filter'} variant="outline" size="sm" onPress={() => setShowAddFilter(v => !v)} />
+          </View>
+
+          {showAddFilter && (
+            <View style={{ marginTop: 12, borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 12, backgroundColor: bgColor }}>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                placeholder="Filter name (e.g., UHC-S)"
+                value={newFilterName}
+                onChangeText={setNewFilterName}
+              />
+              <View style={{ marginBottom: 6 }}>
+                {[
+                  { label: 'Broadband', value: 'broadband' as const },
+                  { label: 'Narrowband', value: 'narrowband' as const },
+                  { label: 'Line Filter', value: 'line' as const },
+                  { label: 'Light Pollution', value: 'light_pollution' as const },
+                  { label: 'Color', value: 'color' as const },
+                  { label: 'Other', value: 'other' as const },
+                ].map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={{
+                      padding: 8,
+                      borderWidth: 1,
+                      borderColor: borderColor,
+                      borderRadius: 6,
+                      marginBottom: 4,
+                      backgroundColor: newFilterType === option.value ? tint + '20' : bgColor,
+                    }}
+                    onPress={() => setNewFilterType(option.value)}
+                  >
+                    <ThemedText style={{ textAlign: 'center', fontSize: 14 }}>{option.label}</ThemedText>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                placeholder="Description (optional)"
+                value={newFilterDesc}
+                onChangeText={setNewFilterDesc}
+              />
+              {(newFilterType === 'narrowband' || newFilterType === 'line') && (
+                <>
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                    placeholder="Central wavelength (nm)"
+                    keyboardType="numeric"
+                    value={newFilterWavelength}
+                    onChangeText={setNewFilterWavelength}
+                  />
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                    placeholder="Bandwidth (nm)"
+                    keyboardType="numeric"
+                    value={newFilterBandwidth}
+                    onChangeText={setNewFilterBandwidth}
+                  />
+                </>
+              )}
+              <TextInput
+                style={{ borderWidth: 1, borderColor: borderColor, borderRadius: 8, padding: 8, color: textColor, backgroundColor: bgColor, marginBottom: 6 }}
+                placeholder="Transmission (%) optional"
+                keyboardType="numeric"
+                value={newFilterTransmission}
+                onChangeText={setNewFilterTransmission}
+              />
+              <View style={{ marginTop: 8, flexDirection: 'row' }}>
+                <ThemedButton title="Save" onPress={handleAddFilter} size="sm" style={{ marginRight: 8 }} />
+                <ThemedButton title="Cancel" variant="outline" size="sm" onPress={() => setShowAddFilter(false)} />
               </View>
             </View>
           )}
